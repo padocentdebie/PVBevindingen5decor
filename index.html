@@ -13,7 +13,7 @@
         .instruction-box h3 { margin-top: 0; color: var(--politie-blauw); }
         
         .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; margin-bottom: 25px; border-radius: 8px; background: #000; }
-        .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .video-container iframe, .video-container div { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
         .login-section, .work-section { margin-bottom: 25px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; }
         input, select, textarea { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; font-family: inherit; }
@@ -47,7 +47,7 @@
     </div>
 
     <div class="video-container">
-        <iframe src="https://www.youtube.com/embed/SS8Ku4RDQ70" frameborder="0" allowfullscreen></iframe>
+        <div id="player"></div>
     </div>
 
     <div id="login-section" class="login-section">
@@ -100,6 +100,31 @@
     let currentUser = "";
     let currentClass = "";
 
+    // --- YOUTUBE API ---
+    var tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    var firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    let player;
+    window.onYouTubeIframeAPIReady = function() {
+        player = new YT.Player('player', {
+            videoId: 'SS8Ku4RDQ70',
+            events: {
+                'onStateChange': onPlayerStateChange
+            }
+        });
+    }
+
+    function onPlayerStateChange(event) {
+        // Zodra de video eindigt, spring naar 2:27 (147 sec) en pauzeer
+        if (event.data == YT.PlayerState.ENDED) {
+            player.seekTo(147);
+            player.pauseVideo();
+        }
+    }
+
+    // --- APP LOGICA ---
     window.login = function() {
         currentUser = document.getElementById('username').value.trim();
         currentClass = document.getElementById('userclass').value;
@@ -123,38 +148,34 @@
         }
     }
 
-    // Live update van de feed
-    onValue(entriesRef, (snapshot) => {
+    // Gebruik onChildAdded om verspringen van de lijst te voorkomen
+    onChildAdded(entriesRef, (data) => {
         const feed = document.getElementById('live-feed');
-        feed.innerHTML = "";
-        const data = snapshot.val();
-        if (data) {
-            // Sorteer op tijd (nieuwste boven)
-            Object.keys(data).reverse().forEach(key => {
-                const entry = data[key];
-                const div = document.createElement('div');
-                div.className = 'feed-item';
-                div.innerHTML = `
-                    <div class="meta"><strong>${entry.user}</strong> (Klas: ${entry.class.toUpperCase()})</div>
-                    <p>${entry.text}</p>
-                    <button style="background:#6c757d; font-size:0.8em;" onclick="document.getElementById('fb-${key}').style.display='block'">Feedback geven</button>
-                    <div id="fb-${key}" class="feedback-box">
-                        <textarea rows="8" placeholder="Beschrijf dag datum tijd, adres... (Format volgens instructie)"></textarea>
-                        <button onclick="alert('Feedback opgeslagen!'); this.parentElement.style.display='none'">Opslaan</button>
-                    </div>
-                `;
-                feed.appendChild(div);
-            });
-        } else {
-            feed.innerHTML = "<p style='color:#999;'>Feed is leeg.</p>";
-        }
+        const entry = data.val();
+        const key = data.key;
+
+        const div = document.createElement('div');
+        div.className = 'feed-item';
+        div.innerHTML = `
+            <div class="meta"><strong>${entry.user}</strong> (Klas: ${entry.class.toUpperCase()})</div>
+            <p>${entry.text}</p>
+            <button style="background:#6c757d; font-size:0.8em;" onclick="document.getElementById('fb-${key}').style.display='block'">Feedback geven</button>
+            <div id="fb-${key}" class="feedback-box">
+                <textarea rows="8" placeholder="Beschrijf dag datum tijd, adres... (Format volgens instructie)"></textarea>
+                <button onclick="alert('Feedback opgeslagen!'); this.parentElement.style.display='none'">Opslaan</button>
+            </div>
+        `;
+        // Nieuwste items bovenaan toevoegen zonder de rest te resetten
+        feed.prepend(div);
     });
 
-    // De Resetknop functie
     window.resetDatabase = function() {
-        if (confirm("WEET JE HET ZEKER? Alle teksten van de studenten worden definitief verwijderd uit de database.")) {
+        if (confirm("WEET JE HET ZEKER? Alle teksten van de studenten worden definitief verwijderd.")) {
             set(ref(db, 'entries'), null)
-            .then(() => alert("Database succesvol gereset."))
+            .then(() => {
+                alert("Database succesvol gereset.");
+                location.reload(); 
+            })
             .catch((error) => alert("Fout bij resetten: " + error.message));
         }
     }
