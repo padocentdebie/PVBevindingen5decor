@@ -29,6 +29,7 @@
         .meta { font-size: 0.85em; color: #666; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         
         .feedback-box { display: none; margin-top: 15px; background: #f8f9fa; padding: 15px; border: 1px dotted #0056b3; border-radius: 6px; }
+        .feedback-content { margin-top: 15px; padding: 10px; background: #fffde7; border-radius: 4px; border-left: 3px solid #fbc02d; font-size: 0.95em; }
     </style>
 </head>
 <body>
@@ -75,7 +76,7 @@
     <hr>
     <div style="text-align: center;">
         <button class="reset-btn" onclick="resetDatabase()">RESET LIVEFEED (Alleen voor docent)</button>
-        <p style="font-size: 0.7em; color: #999;">Pas op: hiermee verwijder je alle inzendingen van de database.</p>
+        <p style="font-size: 0.7em; color: #999;">Pas op: hiermee verwijder je alle inzendingen.</p>
     </div>
 </div>
 
@@ -117,7 +118,7 @@
     }
 
     function onPlayerStateChange(event) {
-        // Zodra de video eindigt, spring naar 2:27 (147 sec) en pauzeer
+        // Zodra video eindigt: naar 2:27 (147 sec) en toon de still
         if (event.data == YT.PlayerState.ENDED) {
             player.seekTo(147);
             player.pauseVideo();
@@ -148,7 +149,17 @@
         }
     }
 
-    // Gebruik onChildAdded om verspringen van de lijst te voorkomen
+    window.saveFeedback = function(key) {
+        const fbText = document.querySelector(`#fb-input-${key}`).value.trim();
+        if(fbText) {
+            const feedbackRef = ref(db, `entries/${key}/feedback`);
+            set(feedbackRef, fbText).then(() => {
+                document.getElementById(`fb-${key}`).style.display = 'none';
+            });
+        }
+    }
+
+    // Gebruik onChildAdded om ALLEEN nieuwe items toe te voegen (geen refresh van bestaande DOM)
     onChildAdded(entriesRef, (data) => {
         const feed = document.getElementById('live-feed');
         const entry = data.val();
@@ -156,27 +167,40 @@
 
         const div = document.createElement('div');
         div.className = 'feed-item';
+        div.id = `item-${key}`;
         div.innerHTML = `
             <div class="meta"><strong>${entry.user}</strong> (Klas: ${entry.class.toUpperCase()})</div>
             <p>${entry.text}</p>
+            <div id="display-fb-${key}"></div>
             <button style="background:#6c757d; font-size:0.8em;" onclick="document.getElementById('fb-${key}').style.display='block'">Feedback geven</button>
             <div id="fb-${key}" class="feedback-box">
-                <textarea rows="8" placeholder="Beschrijf dag datum tijd, adres... (Format volgens instructie)"></textarea>
-                <button onclick="alert('Feedback opgeslagen!'); this.parentElement.style.display='none'">Opslaan</button>
+                <textarea id="fb-input-${key}" rows="4" placeholder="Schrijf hier de feedback..."></textarea>
+                <button onclick="saveFeedback('${key}')">Opslaan</button>
             </div>
         `;
-        // Nieuwste items bovenaan toevoegen zonder de rest te resetten
-        feed.prepend(div);
+        
+        // Nieuwe entries onderaan toevoegen voorkomt dat de lijst bovenin 'springt' tijdens het lezen
+        feed.appendChild(div);
+
+        // Alleen de feedback-div van dit specifieke item updaten als er iets verandert
+        const fbRef = ref(db, `entries/${key}/feedback`);
+        onValue(fbRef, (snapshot) => {
+            const feedbackText = snapshot.val();
+            const displayDiv = document.getElementById(`display-fb-${key}`);
+            if(feedbackText && displayDiv) {
+                displayDiv.innerHTML = `
+                    <div class="feedback-content">
+                        <strong>Feedback:</strong><br>
+                        ${feedbackText}
+                    </div>
+                `;
+            }
+        });
     });
 
     window.resetDatabase = function() {
-        if (confirm("WEET JE HET ZEKER? Alle teksten van de studenten worden definitief verwijderd.")) {
-            set(ref(db, 'entries'), null)
-            .then(() => {
-                alert("Database succesvol gereset.");
-                location.reload(); 
-            })
-            .catch((error) => alert("Fout bij resetten: " + error.message));
+        if (confirm("WEET JE HET ZEKER?")) {
+            set(ref(db, 'entries'), null).then(() => { location.reload(); });
         }
     }
 </script>
